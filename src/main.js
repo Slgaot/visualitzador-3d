@@ -57,7 +57,7 @@ const loader = new OBJLoader();
 console.log('Cargando tree.obj...');
 
 loader.load(
-  '/tree.obj',
+  import.meta.env.BASE_URL + 'tree.obj',
 
   (object) => {
     console.log('Árbol cargado correctamente');
