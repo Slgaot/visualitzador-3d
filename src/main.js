@@ -1,143 +1,90 @@
-
 import * as THREE from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-// ESCENA
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x202020);
 
-// CÁMARA
-const camera = new THREE.PerspectiveCamera(
-  60,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  1000
-);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(0, 0, 10);
 
-// RENDERIZADOR
-const renderer = new THREE.WebGLRenderer({
-  antialias: true
-});
-
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(
-  Math.min(window.devicePixelRatio, 2)
-);
-
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 document.body.style.margin = '0';
-document.body.replaceChildren(renderer.domElement);
+document.body.appendChild(renderer.domElement);
 
-// ILUMINACIÓN CENITAL
 const light = new THREE.DirectionalLight(0xffffff, 3);
 light.position.set(0, 10, 0);
 scene.add(light);
+scene.add(new THREE.AmbientLight(0xffffff, 1.5));
 
-// ILUMINACIÓN AMBIENTAL
-const ambientLight = new THREE.AmbientLight(
-  0xffffff,
-  1.5
-);
-scene.add(ambientLight);
-
-// CONTROLES DEL RATÓN
-const controls = new OrbitControls(
-  camera,
-  renderer.domElement
-);
-
+const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.enableRotate = true;
 controls.enableZoom = true;
 
-// CARGAR ÁRBOL OBJ
-const loader = new OBJLoader();
+// BASE_URL funciona tanto en local como en GitHub Pages.
+const base = import.meta.env.BASE_URL;
+const textureLoader = new THREE.TextureLoader();
+const branchNormal = textureLoader.load(base + 'branch05_normal.png');
+const barkNormal = textureLoader.load(base + 'mossybark02_normal.png');
 
-console.log('Cargando tree.obj...');
-
-loader.load(
-  import.meta.env.BASE_URL + 'tree.obj',
-
-  (object) => {
-    console.log('Árbol cargado correctamente');
-
-    // Material visible
+const mtlLoader = new MTLLoader();
+mtlLoader.setPath(base);
+mtlLoader.setResourcePath(base);
+mtlLoader.load('QuickMapleOptimized.mtl', (materials) => {
+  materials.preload();
+  const objLoader = new OBJLoader();
+  objLoader.setMaterials(materials);
+  objLoader.load(base + 'tree.obj', (object) => {
     object.traverse((child) => {
-      if (child.isMesh) {
-        child.material = new THREE.MeshStandardMaterial({
-          color: 0x228b22,
-          side: THREE.DoubleSide
+      if (!child.isMesh) return;
+      const original = Array.isArray(child.material) ? child.material : [child.material];
+      const updated = original.map((material) => {
+        const name = material.name.toLowerCase();
+        const result = new THREE.MeshStandardMaterial({
+          map: material.map || null,
+          side: THREE.DoubleSide,
+          roughness: 1,
         });
-      }
+        if (name.includes('branch05')) {
+          result.normalMap = branchNormal;
+          result.transparent = false;
+          result.alphaTest = 0.5;
+        } else if (name.includes('mossybark')) {
+          result.normalMap = barkNormal;
+        }
+        return result;
+      });
+      child.material = Array.isArray(child.material) ? updated : updated[0];
     });
 
-    // Calcular dimensiones originales
     const box = new THREE.Box3().setFromObject(object);
-    const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-
-    console.log('Dimensiones:', size);
-
-    // Crear grupo para centrar el árbol
+    const size = box.getSize(new THREE.Vector3());
+    object.position.sub(center);
     const group = new THREE.Group();
-
-    // Mover el modelo al centro
-    object.position.set(
-      -center.x,
-      -center.y,
-      -center.z
-    );
-
-    // Escalar el grupo completo
-    const maxSize = Math.max(
-      size.x,
-      size.y,
-      size.z
-    );
-
-    if (maxSize > 0) {
-      group.scale.setScalar(5 / maxSize);
-    }
-
     group.add(object);
+    group.scale.setScalar(5 / Math.max(size.x, size.y, size.z));
     scene.add(group);
-
-    // Colocar cámara mirando al centro
     camera.position.set(0, 0, 10);
-    camera.lookAt(0, 0, 0);
-
     controls.target.set(0, 0, 0);
     controls.update();
+    console.log('Árbol cargado con sus texturas originales');
+  }, undefined, (error) => console.error('Error al cargar tree.obj:', error));
+}, undefined, (error) => console.error('Error al cargar materiales:', error));
 
-    console.log('Árbol centrado y añadido');
-  },
-
-  undefined,
-
-  (error) => {
-    console.error('Error cargando árbol:', error);
-  }
-);
-
-// ADAPTAR A LA VENTANA
 window.addEventListener('resize', () => {
-  camera.aspect =
-    window.innerWidth / window.innerHeight;
-
+  camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-
-  renderer.setSize(
-    window.innerWidth,
-    window.innerHeight
-  );
+  renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// ANIMACIÓN
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
   renderer.render(scene, camera);
 }
-
 animate();
